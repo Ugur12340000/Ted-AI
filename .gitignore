@@ -1,171 +1,139 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+import asyncio
+import logging
+import requests
+import json
+import time
+from aiogram import Bot, Dispatcher
+from aiogram.methods import DeleteWebhook
+from aiogram import types
+from aiogram.filters import Command
+from aiogram.types import Message, InputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from mistralai import Mistral
+import random
 
-# C extensions
-*.so
+MISTRAL_API_KEY = "YOUR_OWN_API_KEY"  # ⚠️ YOU NEED TO REPLACE IT WITH YOUR OWN API KEY
+PRODIA_API_KEY = 'YOUR_OWN_API_KEY' # ⚠️ CHANGE API KEY
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+TELEGRAM_TOKEN = 'YOUR_OWN_TOKEN'  # ⚠️ CHANGE TOKEN
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
+mistral_model = "mistral-small-latest"
+mistral_client = Mistral(api_key=MISTRAL_API_KEY)
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+logging.basicConfig(level=logging.INFO)
+bot = Bot(token=TELEGRAM_TOKEN)
+dp = Dispatcher()
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-cover/
+def get_job(prompt, style):
+    url = "https://api.prodia.com/v1/sdxl/generate"
+    payload = {
+        "prompt": prompt,
+        "style_preset": style,
+        "sampler": "DPM++ 2M Karras"
+    }
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "X-Prodia-Key": PRODIA_API_KEY
+    }
+    response = requests.post(url, json=payload, headers=headers)
+    res = response.json()
+    return res.get('job')
 
-# Translations
-*.mo
-*.pot
+def get_image_url(job):
+    url = f"https://api.prodia.com/v1/job/{job}"
+    headers = {
+        "accept": "application/json",
+        "X-Prodia-Key": PRODIA_API_KEY
+    }
+    response = requests.get(url, headers=headers)
+    res = response.json()
+    return res.get('imageUrl'), res.get('status')
 
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
+def generate_random_prompt():
+    words = ["sunset", "forest", "robot", "castle", "magic", "ocean", "sky", "galaxy", "future", "dream", "reflection", "serenity", "bloom", "drift", "horizon", "radiance", "journey", "mirage", "whispers", "twilightss"]
+    return " ".join(random.sample(words, 3))
 
-# Flask stuff:
-instance/
-.webassets-cache
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message):
+    start_text = "Hi! My name is Ted. \n\nUse this commands to reveal my abilities 🤫  \n\n/about-learn more about me 😉 \n\n/generate-generates an image 🖼️ \n\n/random-generates a random image 🤩 \n\nYou can also communicate with me without any commands 👽 "
+    await bot.send_message(message.chat.id, start_text)
 
-# Scrapy stuff:
-.scrapy
+@dp.message(Command("about"))
+async def cmd_about(message: types.Message):
+    about_text = "Hello! Allow me to introduce myself in a bit more detail. My name is Ted, and I am an advanced, picture-based AI model created by the brilliant mind of Ugur 🧠 \n\nUnlike typical AI, I specialize in interpreting and generating images, making me an ideal companion for creative endeavors and visual exploration 👁️ \n\nWith cutting-edge algorithms and a vast dataset, I am equipped to understand visual concepts, provide artistic suggestions, and even generate entirely new images based on detailed prompts 🧩 \n\nFrom creating breathtaking landscapes to envisioning futuristic cities, I bring imagination to life, one pixel at a time ⛰️ \n\nAs I continue to evolve, my ability to learn and adapt to new styles and ideas will only grow, allowing me to assist in even more exciting and innovative ways 📈 \n\nWelcome to a world where art meets technology! 🌍"
+    await bot.send_message(message.chat.id, about_text)
 
-# Sphinx documentation
-docs/_build/
+@dp.message(Command("generate"))
+async def generate_image(msg: Message):
+    user_message = msg.text.replace("/generate", "").strip()
+    if not user_message:
+        await bot.send_message(msg.chat.id, "Please enter a description of the image after the command. \n\n Example: /generate -----")
+        return
 
-# PyBuilder
-.pybuilder/
-target/
+    styles = ["3d-model", "anime", "analog-film", "fantasy-art", "pixel-art"]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=style, callback_data=f"style:{style}|{user_message}")]
+        for style in styles
+    ])
 
-# Jupyter Notebook
-.ipynb_checkpoints
+    await bot.send_message(msg.chat.id, "Choose a style for your image:", reply_markup=keyboard)
 
-# IPython
-profile_default/
-ipython_config.py
+@dp.message(Command("random"))
+async def random_image(msg: Message):
+    random_prompt = generate_random_prompt()
 
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
+    styles = ["3d-model", "anime", "analog-film", "fantasy-art", "pixel-art"]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=style, callback_data=f"style:{style}|{random_prompt}")]
+        for style in styles
+    ])
 
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
+    await bot.send_message(msg.chat.id, f"Random prompt: {random_prompt}\nChoose a style for your image:", reply_markup=keyboard)
 
-# UV
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#uv.lock
+@dp.callback_query()
+async def process_style(callback_query: types.CallbackQuery):
+    data = callback_query.data
+    if data.startswith("style:"):
+        _, style_and_prompt = data.split(":", 1)
+        style, prompt = style_and_prompt.split("|", 1)
 
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
-#poetry.lock
+        await bot.send_message(callback_query.message.chat.id, "Image is being generated, please wait a few minutes...")
 
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#pdm.lock
-#   pdm stores project-wide configurations in .pdm.toml, but it is recommended to not include it
-#   in version control.
-#   https://pdm.fming.dev/latest/usage/project/#working-with-version-control
-.pdm.toml
-.pdm-python
-.pdm-build/
+        try:
+            job_name = get_job(prompt, style)
+            status = 'generating'
+            image_url = None
 
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
-__pypackages__/
+            while status == 'generating':
+                time.sleep(5)
+                image_url, status = get_image_url(job_name)
 
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
+            if image_url:
+                await bot.send_photo(callback_query.message.chat.id, photo=image_url, caption="Your image is ready!")
+            else:
+                await bot.send_message(callback_query.message.chat.id, "There was an error generating the image. Please try again later.")
 
-# SageMath parsed files
-*.sage.py
+        except Exception as e:
+            await bot.send_message(callback_query.message.chat.id, f"An error occurred: {str(e)}")
 
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+@dp.message()
+async def message_handler(msg: Message):
+    chat_response = mistral_client.chat.complete(
+        model=mistral_model,
+        messages=[
+            {
+                "role": "user",
+                "content": msg.text,
+            },
+        ]
+    )
+    await bot.send_message(msg.chat.id, chat_response.choices[0].message.content, parse_mode="Markdown")
 
-# Spyder project settings
-.spyderproject
-.spyproject
+async def main():
+    await bot(DeleteWebhook(drop_pending_updates=True))
+    await dp.start_polling(bot)
 
-# Rope project settings
-.ropeproject
+if __name__ == "__main__":
+    asyncio.run(main())
 
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# pytype static type analyzer
-.pytype/
-
-# Cython debug symbols
-cython_debug/
-
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
-
-# PyPI configuration file
-.pypirc
+# By Ugur ⚠️
